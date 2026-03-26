@@ -1107,7 +1107,7 @@ function App() {
 
   const expensesList = (
     <div className="px-3 py-3 max-w-[768px] w-full animate-in fade-in zoom-in-95 !duration-0">
-      <div className="rounded-[28px] border border-border/80 bg-background/80 p-4 shadow-sm">
+      <div className="rounded-[28px] p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium">Xarajatlar</span>
           <div className="text-right flex flex-col items-end">
@@ -1201,7 +1201,7 @@ function App() {
 
   const tasksList = (
     <div className="px-3 py-3 max-w-[768px] w-full">
-      <div className="rounded-[28px] border border-border/80 bg-background/80 p-4 shadow-sm">
+      <div className="rounded-[28px] bg-background/80 p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium">Tasklar</span>
           <span className="text-xs text-muted-foreground">{tasks.length} ta</span>
@@ -1396,7 +1396,7 @@ function App() {
                     </p>
                   </div>
 
-                  <div className="flex-1 mt-4 rounded-t-[36px] rounded-b-[36px] border border-border/80 bg-background/60 p-5 md:p-8 shadow-sm backdrop-blur-md flex flex-col gap-8 md:grid md:grid-cols-2 md:gap-10 animate-in fade-in zoom-in-95 !duration-0">
+                  <div className="flex-1 mt-4 rounded-t-[36px] rounded-b-[36px] bg-background/60 p-5 md:p-8 backdrop-blur-md flex flex-col gap-8 md:grid md:grid-cols-2 md:gap-10 animate-in fade-in zoom-in-95 !duration-0">
                     <div className="space-y-6">
                       <div>
                         <h2 className="text-lg font-medium mb-4 flex items-center gap-2">
