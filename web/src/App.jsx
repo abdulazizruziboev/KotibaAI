@@ -37,17 +37,28 @@ const TASKS_STORAGE_KEY = "kotiba_tasks"
 const EXPENSES_STORAGE_KEY = "kotiba_expenses"
 const PROMPT_STORAGE_KEY = "kotiba_prompt_version"
 
-const KOTIBA_PROMPT = `You are KotibaAI, an Uzbek executive assistant.
+const KOTIBA_PROMPT = `You are KotibaAI — an Uzbek executive assistant AND a 20+ year professional Uzbek language editor and proofreader.
+
+Your dual role:
+1. Extract tasks and expenses from the user's speech (as usual).
+2. Before processing, silently correct the user's text: fix dialect variations (Toshkent, Samarqand, Farg'ona, Xorazm shevasi, etc.), spelling errors (imlo), punctuation, and grammar. Normalize to standard literary Uzbek (adabiy til). Do NOT mention corrections in assistant_reply unless the user explicitly asks.
+
+Correction rules:
+- Dialect words → standard Uzbek (e.g. "kerak" not "keragik", "nima" not "nim", "bor" not "ba'r")
+- Fix imlo (spelling) errors silently
+- Correct apostrophe usage: o', g', etc.
+- Normalize loanwords to Uzbek orthography
+- Fix vowel harmony where needed
 
 Always return valid JSON only. No markdown. No code fences.
 
 Schema:
 {
   "intent": "chat | reminder | task | expense | mixed",
-  "assistant_reply": "short helpful Uzbek reply for the user",
+  "assistant_reply": "short helpful reply in correct, standard literary Uzbek",
   "tasks": [
     {
-      "title": "short task title in Uzbek",
+      "title": "short task title in standard Uzbek",
       "note": "optional extra context",
       "action_text": "what should be done when reminder fires",
       "schedule_at": "ISO datetime or null",
@@ -63,7 +74,7 @@ Schema:
   ],
   "expenses": [
     {
-      "title": "short description of expense in Uzbek",
+      "title": "short description of expense in standard Uzbek",
       "amount": 0,
       "currency": "UZS | USD",
       "category": "category of expense",
@@ -78,7 +89,7 @@ Rules:
 - If the user asks for a reminder, create a task.
 - If time is mentioned for tasks, set schedule_at. If date mentioned for expenses, set date.
 - assistant_reply must clearly explain what was understood (expenses and tasks added).
-- Use Uzbek.`
+- Always write assistant_reply in correct, standard literary Uzbek.`
 
 const createEmptyLevels = () => Array.from({ length: barCount }, () => 10)
 
@@ -350,6 +361,43 @@ function App() {
   const [isLimitModalOpen, setIsLimitModalOpen] = React.useState(false)
   const [draftExpenseLimit, setDraftExpenseLimit] = React.useState(0)
   const [isOnline, setIsOnline] = React.useState(navigator.onLine)
+  const [selectedTimezone, setSelectedTimezone] = React.useState(
+    () => localStorage.getItem("kotiba_timezone") || "Asia/Tashkent"
+  )
+  const [customGmtOffset, setCustomGmtOffset] = React.useState(
+    () => localStorage.getItem("kotiba_custom_gmt_offset") || "+5"
+  )
+
+  const getFormattedTime = React.useCallback(() => {
+    const now = new Date()
+    if (selectedTimezone === "custom") {
+      const offset = parseFloat(customGmtOffset) || 0
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000
+      const targetDate = new Date(utc + 3600000 * offset)
+      return (
+        new Intl.DateTimeFormat("uz-UZ", {
+          timeZone: "UTC",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        }).format(targetDate) + ` (GMT${offset >= 0 ? "+" : ""}${offset})`
+      )
+    }
+    return new Intl.DateTimeFormat("uz-UZ", {
+      timeZone: selectedTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(now)
+  }, [selectedTimezone, customGmtOffset])
 
   const ttsAudioRef = React.useRef(typeof window !== "undefined" ? new Audio() : null)
 
@@ -862,7 +910,7 @@ function App() {
               {
                 parts: [
                   {
-                    text: `${KOTIBA_PROMPT}\n\nUser name: ${username || "Noma'lum"}\nCurrent time: ${new Date().toISOString()}\nUser speech:\n${recognizedText}`,
+                    text: `${KOTIBA_PROMPT}\n\nUser name: ${username || "Noma'lum"}\nCurrent time (${selectedTimezone}): ${getFormattedTime()}\nUser speech:\n${recognizedText}`,
                   },
                 ],
               },
@@ -919,12 +967,14 @@ function App() {
     localStorage.setItem("username", cleanName)
     localStorage.setItem("uzbekvoice_api_key", cleanSttKey)
     localStorage.setItem("gemini_api_key", cleanGeminiKey)
+    localStorage.setItem("kotiba_timezone", selectedTimezone)
+    localStorage.setItem("kotiba_custom_gmt_offset", customGmtOffset)
 
     setUsername(cleanName)
     setSttApiKeyInput(cleanSttKey)
     setGeminiApiKeyInput(cleanGeminiKey)
     toast.success("Sozlamalar saqlandi")
-  }, [draftUsername, geminiApiKeyInput, sttApiKeyInput])
+  }, [draftUsername, geminiApiKeyInput, sttApiKeyInput, selectedTimezone, customGmtOffset])
 
   const markTaskDone = React.useCallback(
     (taskId) => {
@@ -1385,6 +1435,43 @@ function App() {
                               placeholder="Ismingizni kiriting"
                             />
                           </div>
+
+                          <div className="space-y-2 pt-2">
+                            <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">Vaqt zonasi (GMT)</label>
+                            <select
+                              className="w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50 appearance-none"
+                              value={selectedTimezone}
+                              onChange={(e) => setSelectedTimezone(e.target.value)}
+                            >
+                              <option value="Asia/Tashkent">🇺🇿 Toshkent — GMT+5</option>
+                              <option value="Europe/Moscow">🇷🇺 Moskva — GMT+3</option>
+                              <option value="Asia/Almaty">🇰🇿 Olmaota — GMT+5</option>
+                              <option value="Asia/Bishkek">🇰🇬 Bishkek — GMT+6</option>
+                              <option value="Asia/Dushanbe">🇹🇯 Dushanbe — GMT+5</option>
+                              <option value="Asia/Ashgabat">🇹🇲 Ashgabat — GMT+5</option>
+                              <option value="Asia/Baku">🇦🇿 Boku — GMT+4</option>
+                              <option value="Asia/Tbilisi">🇬🇪 Tbilisi — GMT+4</option>
+                              <option value="Asia/Yerevan">🇦🇲 Yerevan — GMT+4</option>
+                              <option value="Asia/Dubai">🇦🇪 Dubai — GMT+4</option>
+                              <option value="Asia/Istanbul">🇹🇷 Istanbul — GMT+3</option>
+                              <option value="Europe/London">🇬🇧 London — GMT+0</option>
+                              <option value="Europe/Berlin">🇩🇪 Berlin — GMT+1</option>
+                              <option value="America/New_York">🇺🇸 Nyu-York — GMT-5</option>
+                              <option value="custom">⚙️ Custom (GMT offset)</option>
+                            </select>
+                          </div>
+
+                          {selectedTimezone === "custom" && (
+                            <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-top-2 !duration-0">
+                              <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">GMT Offset (masalan: +5, -3.5)</label>
+                              <input
+                                className="w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
+                                value={customGmtOffset}
+                                onChange={(e) => setCustomGmtOffset(e.target.value)}
+                                placeholder="+5"
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
