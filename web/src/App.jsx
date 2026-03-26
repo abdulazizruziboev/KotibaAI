@@ -27,6 +27,7 @@ import {
   PencilIcon,
   CheckCircleIcon,
   WifiOffIcon,
+  LoaderIcon,
 } from "lucide-react"
 import React from "react"
 import { toast } from "sonner"
@@ -434,6 +435,12 @@ function App() {
   const audioPreviewRef = React.useRef(null)
   const previewSourceRef = React.useRef(null)
   const spokenTaskIdsRef = React.useRef(new Set())
+  const [isHoldModeActive, setIsHoldModeActive] = React.useState(false)
+  const shouldAutoSendRef = React.useRef(false)
+  const holdTimeoutRef = React.useRef(null)
+  const isPointerDownRef = React.useRef(false)
+  const isHoldModeRef = React.useRef(false) // Safe ref for callback logic
+  const recordingStartTimeRef = React.useRef(0)
 
   const sttApiKey = sttApiKeyInput.trim()
   const geminiApiKey = geminiApiKeyInput.trim()
@@ -595,116 +602,6 @@ function App() {
     localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(nextExpenses))
   }, [])
 
-  const startRecording = React.useCallback(async () => {
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission().then(perm => {
-        setNotificationPermission(perm)
-        if (perm === "granted") toast.success("Bildirishnomalar yoqildi")
-      })
-    }
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    const mediaRecorder = new MediaRecorder(stream)
-    const audioContext = new window.AudioContext()
-    const analyser = audioContext.createAnalyser()
-    const source = audioContext.createMediaStreamSource(stream)
-
-    chunksRef.current = []
-    streamRef.current = stream
-    mediaRecorderRef.current = mediaRecorder
-    recordAudioContextRef.current = audioContext
-    recordAnalyserRef.current = analyser
-    setAudioUrl((currentUrl) => {
-      if (currentUrl) URL.revokeObjectURL(currentUrl)
-      return null
-    })
-    setIsPreviewPlaying(false)
-
-    analyser.fftSize = 64
-    analyser.smoothingTimeConstant = 0.85
-    source.connect(analyser)
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunksRef.current.push(event.data)
-        rebuildAudioUrl()
-      }
-    }
-
-    mediaRecorder.onstop = () => {
-      resetRecorder()
-    }
-
-    mediaRecorder.start()
-    startVisualizer(recordAnalyserRef.current)
-    setIsRecording(true)
-    setIsPaused(false)
-  }, [rebuildAudioUrl, resetRecorder, startVisualizer])
-
-  const stopRecording = React.useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop()
-      return
-    }
-    resetRecorder()
-  }, [resetRecorder])
-
-  const togglePause = React.useCallback(() => {
-    if (!mediaRecorderRef.current) return
-
-    if (mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.pause()
-      mediaRecorderRef.current.requestData()
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-        animationFrameRef.current = null
-      }
-      setAudioLevels(createEmptyLevels())
-      setIsPaused(true)
-      return
-    }
-
-    if (mediaRecorderRef.current.state === "paused") {
-      mediaRecorderRef.current.resume()
-      if (recordAnalyserRef.current) startVisualizer(recordAnalyserRef.current)
-      setIsPaused(false)
-    }
-  }, [startVisualizer])
-
-  const togglePreviewPlayback = React.useCallback(() => {
-    if (!audioPreviewRef.current || !audioUrl) return
-
-    if (isPreviewPlaying) {
-      audioPreviewRef.current.pause()
-      audioPreviewRef.current.currentTime = 0
-      setIsPreviewPlaying(false)
-      stopVisualizer()
-      return
-    }
-
-    if (!previewAudioContextRef.current) {
-      const audioContext = new window.AudioContext()
-      const analyser = audioContext.createAnalyser()
-      const source = audioContext.createMediaElementSource(audioPreviewRef.current)
-
-      analyser.fftSize = 64
-      analyser.smoothingTimeConstant = 0.85
-      source.connect(analyser)
-      analyser.connect(audioContext.destination)
-
-      previewAudioContextRef.current = audioContext
-      previewAnalyserRef.current = analyser
-      previewSourceRef.current = source
-    }
-
-    if (previewAudioContextRef.current.state === "suspended") {
-      previewAudioContextRef.current.resume()
-    }
-    if (previewAnalyserRef.current) startVisualizer(previewAnalyserRef.current)
-    audioPreviewRef.current.play()
-    setIsPreviewPlaying(true)
-  }, [audioUrl, isPreviewPlaying, startVisualizer, stopVisualizer])
-
   const handleTaskAction = React.useCallback(
     (task) => {
       toast.info(task.title, {
@@ -844,11 +741,15 @@ function App() {
       return
     }
 
-    if (chunksRef.current.length === 0) {
-      setSubmitError("Yuborish uchun audio topilmadi")
-      toast.error("Audio topilmadi", {
-        description: "Avval qisqa yozuv olib keyin yuboring.",
+    const totalSize = chunksRef.current.reduce((acc, chunk) => acc + chunk.size, 0)
+    const duration = Date.now() - recordingStartTimeRef.current
+
+    if (duration < 800 || totalSize < 3072) { 
+      setSubmitError("Audio juda qisqa yoki bo'sh")
+      toast.error("Audio juda qisqa", {
+        description: "Iltimos, qaytadan yozib ko'ring (kamida 1 soniya).",
       })
+      chunksRef.current = [] // Clear and don't send
       return
     }
 
@@ -893,7 +794,7 @@ function App() {
       if (!geminiApiKey) {
         const fallback = fallbackKotibaObject(recognizedText)
         setGeminiReply(fallback.assistant_reply)
-        resetRecorder()
+        chunksRef.current = []
         return
       }
 
@@ -928,7 +829,7 @@ function App() {
             description: "Plan yoki billingni tekshiring, hozircha faqat transcript ko'rsatildi.",
           })
           setGeminiReply(fallbackKotibaObject(recognizedText).assistant_reply)
-          resetRecorder()
+          chunksRef.current = []
           return
         }
         throw new Error(geminiErrorMessage)
@@ -940,13 +841,16 @@ function App() {
       const kotibaObject = parseKotibaObject(geminiText, recognizedText)
       setGeminiReply(kotibaObject.assistant_reply || "")
       saveGeneratedData(kotibaObject.tasks || [], kotibaObject.expenses || [])
-      resetRecorder()
+      
+      // Final data cleanup
+      chunksRef.current = []
     } catch (error) {
       const message = error.message || "Audio yuborishda xatolik"
       setSubmitError(message)
       toast.error("So'rovda xatolik", {
         description: message,
       })
+      chunksRef.current = []
     } finally {
       setIsSubmitting(false)
     }
@@ -958,6 +862,174 @@ function App() {
     sttApiKey,
     username,
   ])
+
+  const togglePause = React.useCallback(() => {
+    if (!mediaRecorderRef.current) return
+
+    if (mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.pause()
+      mediaRecorderRef.current.requestData()
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
+      }
+      setAudioLevels(createEmptyLevels())
+      setIsPaused(true)
+      return
+    }
+
+    if (mediaRecorderRef.current.state === "paused") {
+      mediaRecorderRef.current.resume()
+      if (recordAnalyserRef.current) startVisualizer(recordAnalyserRef.current)
+      setIsPaused(false)
+    }
+  }, [startVisualizer])
+
+  const togglePreviewPlayback = React.useCallback(() => {
+    if (!audioPreviewRef.current || !audioUrl) return
+
+    if (isPreviewPlaying) {
+      audioPreviewRef.current.pause()
+      audioPreviewRef.current.currentTime = 0
+      setIsPreviewPlaying(false)
+      stopVisualizer()
+      return
+    }
+
+    if (!previewAudioContextRef.current) {
+      const audioContext = new window.AudioContext()
+      const analyser = audioContext.createAnalyser()
+      const source = audioContext.createMediaElementSource(audioPreviewRef.current)
+
+      analyser.fftSize = 64
+      analyser.smoothingTimeConstant = 0.85
+      source.connect(analyser)
+      analyser.connect(audioContext.destination)
+
+      previewAudioContextRef.current = audioContext
+      previewAnalyserRef.current = analyser
+      previewSourceRef.current = source
+    }
+
+    if (previewAudioContextRef.current.state === "suspended") {
+      previewAudioContextRef.current.resume()
+    }
+    if (previewAnalyserRef.current) startVisualizer(previewAnalyserRef.current)
+    audioPreviewRef.current.play()
+    setIsPreviewPlaying(true)
+  }, [audioUrl, isPreviewPlaying, startVisualizer, stopVisualizer])
+
+  const startRecording = React.useCallback(async () => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().then(perm => {
+        setNotificationPermission(perm)
+        if (perm === "granted") toast.success("Bildirishnomalar yoqildi")
+      })
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    const audioContext = new window.AudioContext()
+    const analyser = audioContext.createAnalyser()
+    const source = audioContext.createMediaStreamSource(stream)
+
+    chunksRef.current = []
+    streamRef.current = stream
+    mediaRecorderRef.current = mediaRecorder
+    recordAudioContextRef.current = audioContext
+    recordAnalyserRef.current = analyser
+    setAudioUrl((currentUrl) => {
+      if (currentUrl) URL.revokeObjectURL(currentUrl)
+      return null
+    })
+    setIsPreviewPlaying(false)
+
+    analyser.fftSize = 64
+    analyser.smoothingTimeConstant = 0.85
+    source.connect(analyser)
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunksRef.current.push(event.data)
+        rebuildAudioUrl()
+      }
+    }
+
+    mediaRecorder.onstop = () => {
+      // Clear UI states immediately
+      setIsRecording(false)
+      setIsPaused(false)
+      stopVisualizer()
+      stopStream()
+
+      if (shouldAutoSendRef.current) {
+        sendRecording()
+      } else {
+        resetRecorder()
+      }
+      shouldAutoSendRef.current = false
+    }
+
+    mediaRecorder.start()
+    recordingStartTimeRef.current = Date.now()
+    startVisualizer(recordAnalyserRef.current)
+    setIsRecording(true)
+    setIsPaused(false)
+  }, [rebuildAudioUrl, resetRecorder, startVisualizer])
+
+  const stopRecording = React.useCallback((autoSend = false) => {
+    shouldAutoSendRef.current = autoSend
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop()
+      return
+    }
+    resetRecorder()
+  }, [resetRecorder])
+
+  const handleMicPointerDown = React.useCallback((e) => {
+    e.preventDefault()
+    isPointerDownRef.current = true
+    shouldAutoSendRef.current = false
+    
+    holdTimeoutRef.current = setTimeout(() => {
+      if (isPointerDownRef.current) {
+        isHoldModeRef.current = true
+        setIsHoldModeActive(true)
+        if (mediaRecorderRef.current?.state !== "recording") {
+          startRecording()
+        }
+      }
+    }, 1000)
+  }, [startRecording])
+
+  const handleMicPointerUp = React.useCallback((e) => {
+    e.preventDefault()
+    const wasHolding = isHoldModeRef.current
+    isPointerDownRef.current = false
+    isHoldModeRef.current = false // Reset ref immediately
+    
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current)
+      holdTimeoutRef.current = null
+    }
+
+    if (wasHolding) {
+      setIsHoldModeActive(false)
+      stopRecording(true) // Auto-send
+    } else {
+      // Normal click-to-toggle behavior
+      if (isPaused) {
+        togglePreviewPlayback()
+      } else if (mediaRecorderRef.current?.state === "recording") {
+        stopRecording(false)
+      } else {
+        startRecording()
+      }
+    }
+  }, [isHoldModeActive, isPaused, startRecording, stopRecording, togglePreviewPlayback])
+
+
+
 
   const saveSettings = React.useCallback(() => {
     const cleanName = draftUsername.trim()
@@ -1604,21 +1676,33 @@ function App() {
                         />
                       )}
                       <div className="flex items-center gap-3">
-                        {isRecording && (
-                          <Button variant="outline" size="icon" aria-label="Cancel" onClick={stopRecording}>
+                        {isRecording && !isHoldModeActive && (
+                          <Button variant="outline" size="icon" aria-label="Cancel" onClick={() => stopRecording(false)}>
                             <XIcon className="size-5" />
                           </Button>
                         )}
                         <Button
                           size="icon"
-                          className="size-14 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.03] active:scale-[0.97]"
-                          aria-label={isPaused ? "Play chunk" : "Mic"}
-                          onClick={isRecording ? (isPaused ? togglePreviewPlayback : stopRecording) : startRecording}
+                          className="size-14 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-lg select-none touch-none hover:scale-[1.03] active:scale-[0.95]"
+                          aria-label={isPreviewPlaying ? "Pause preview" : isPaused ? "Play preview" : "Mic"}
+                          onPointerDown={handleMicPointerDown}
+                          onPointerUp={handleMicPointerUp}
+                          onPointerLeave={() => {
+                            if (isPointerDownRef.current) handleMicPointerUp({ preventDefault: () => {} })
+                          }}
                           disabled={isSubmitting}
                         >
-                          {isPaused ? <PlayIcon className="size-6 fill-current" /> : <MicIcon className="size-6" />}
+                          {isSubmitting ? (
+                            <LoaderIcon className="size-6 animate-spin" />
+                          ) : isPreviewPlaying ? (
+                            <PauseIcon className="size-6 fill-current" />
+                          ) : isPaused ? (
+                            <PlayIcon className="size-6 fill-current" />
+                          ) : (
+                            <MicIcon className={`size-6 ${isRecording ? "animate-pulse" : ""}`} />
+                          )}
                         </Button>
-                        {isRecording && (
+                        {isRecording && !isHoldModeActive && (
                           <Button
                             variant="secondary"
                             size="icon"
@@ -1634,10 +1718,21 @@ function App() {
                       <div className="flex items-center justify-center pt-1 animate-in fade-in slide-in-from-bottom-4 !duration-0">
                         <BottomNav />
                       </div>
-                      <div className="w-full text-center text-xs text-muted-foreground">
-                        {isSubmitting
-                          ? "KotibaAI audio, niyat va tasklarni tahlil qilmoqda..."
-                          : "Gapiring, pause qiling va yuboring"}
+                      <div className="w-full text-center text-xs text-muted-foreground uppercase tracking-widest font-medium opacity-70 flex items-center justify-center gap-2 h-5">
+                        {isSubmitting ? (
+                          <>
+                            <span>KotibaAI tahlil qilmoqda</span>
+                            <span className="flex gap-1">
+                              <span className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                              <span className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                              <span className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce"></span>
+                            </span>
+                          </>
+                        ) : isHoldModeActive ? (
+                          "Jo'natish uchun qo'yib yuboring"
+                        ) : (
+                          "Gapiring yoki bosib turing"
+                        )}
                       </div>
                     </div>
                   </div>
