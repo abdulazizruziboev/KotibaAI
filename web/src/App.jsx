@@ -26,6 +26,7 @@ import {
   XIcon,
   PencilIcon,
   CheckCircleIcon,
+  WifiOffIcon,
 } from "lucide-react"
 import React from "react"
 import { toast } from "sonner"
@@ -348,6 +349,7 @@ function App() {
   const [expenseLimit, setExpenseLimit] = React.useState(() => Number(localStorage.getItem("kotiba_expense_limit")) || 0)
   const [isLimitModalOpen, setIsLimitModalOpen] = React.useState(false)
   const [draftExpenseLimit, setDraftExpenseLimit] = React.useState(0)
+  const [isOnline, setIsOnline] = React.useState(navigator.onLine)
 
   const ttsAudioRef = React.useRef(typeof window !== "undefined" ? new Audio() : null)
 
@@ -1016,6 +1018,17 @@ function App() {
   }, [])
 
   React.useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
+
+  React.useEffect(() => {
     const intervalId = window.setInterval(() => {
       syncTaskSchedule(tasks || [])
     }, 5000)
@@ -1306,6 +1319,15 @@ function App() {
             {isLight ? <SunIcon className="size-6.5" /> : <MoonIcon className="size-6.5 rotate-270" />}
           </Button>
         </div>
+
+        {!isOnline && (
+          <div className="w-full max-w-[1280px] px-3 mt-3 animate-in fade-in slide-in-from-top-2 !duration-0">
+            <div className="flex items-center justify-center gap-2.5 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2.5 text-destructive text-[13px] font-medium backdrop-blur-md">
+              <WifiOffIcon className="size-4 shrink-0" />
+              <span>Internet aloqasi uzildi. Oflayn rejimdasiz.</span>
+            </div>
+          </div>
+        )}
 
         <SwipeableRoutes>
           <Routes>
