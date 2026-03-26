@@ -1056,7 +1056,7 @@ function App() {
   const totalExpenses = (expenses || []).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0)
 
   const expensesList = (
-    <div className="px-3 py-3 max-w-[1280px] w-full animate-in fade-in zoom-in-95 !duration-0">
+    <div className="px-3 py-3 max-w-[768px] w-full animate-in fade-in zoom-in-95 !duration-0">
       <div className="rounded-[28px] border border-border/80 bg-background/80 p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium">Xarajatlar</span>
@@ -1150,7 +1150,7 @@ function App() {
   )
 
   const tasksList = (
-    <div className="px-3 py-3 max-w-[1280px] w-full">
+    <div className="px-3 py-3 max-w-[768px] w-full">
       <div className="rounded-[28px] border border-border/80 bg-background/80 p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium">Tasklar</span>
@@ -1307,7 +1307,7 @@ function App() {
       {editTaskModal}
       {limitModal}
       <div className="min-h-screen w-full bg-background text-foreground flex flex-col items-center">
-        <div className=" px-3 py-2 max-w-[1280px] w-full border-b border-b-[#0001] flex items-center justify-between rounded-bl-[20px] rounded-br-[20px] bg-background/95 backdrop-blur-sm dark:border-[#fff4]">
+        <div className=" px-3 py-2 max-w-[768px] w-full border-b border-b-[#0001] flex items-center justify-between rounded-bl-[20px] rounded-br-[20px] bg-background/95 backdrop-blur-sm dark:border-[#fff4]">
           <div className="text-base font-medium tracking-[0.01em]">
             Kotiba<b className="font-semibold">AI</b>
           </div>
@@ -1321,10 +1321,14 @@ function App() {
         </div>
 
         {!isOnline && (
-          <div className="w-full max-w-[1280px] px-3 mt-3 animate-in fade-in slide-in-from-top-2 !duration-0">
-            <div className="flex items-center justify-center gap-2.5 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2.5 text-destructive text-[13px] font-medium backdrop-blur-md">
+          <div className="w-full max-w-[768px] px-3 mt-2 animate-in fade-in slide-in-from-top-2 !duration-0">
+            <div className="flex items-center justify-center gap-2.5 rounded-2xl bg-red-500/15 border border-red-400/30 px-4 py-3 text-red-500 dark:text-red-400 text-[13px] font-semibold shadow-sm backdrop-blur-md">
+              <span className="relative flex size-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full size-2.5 bg-red-500" />
+              </span>
               <WifiOffIcon className="size-4 shrink-0" />
-              <span>Internet aloqasi uzildi. Oflayn rejimdasiz.</span>
+              <span>Oflayn rejimdasiz — internet o'chiq</span>
             </div>
           </div>
         )}
@@ -1334,7 +1338,7 @@ function App() {
             <Route
               path="/settings"
               element={
-                <div className="flex flex-col flex-1 w-full max-w-[1280px] px-3">
+                <div className="flex flex-col flex-1 w-full max-w-[768px] px-3">
                   <div className="py-6 pt-8 text-center animate-in fade-in slide-in-from-top-4 !duration-0">
                     <h1 className="text-3xl font-semibold tracking-tight">Sozlamalar</h1>
                     <p className="mt-2 text-sm text-muted-foreground">
@@ -1437,7 +1441,7 @@ function App() {
               path="/"
               element={
                 <>
-                  <div className="px-3 py-3 max-w-[1280px] w-full flex flex-col items-center my-6 text-center gap-2">
+                  <div className="px-3 py-3 max-w-[768px] w-full flex flex-col items-center my-6 text-center gap-2">
                     <span className="text-[22px] leading-none">
                       Assalomu alaykum <b className="font-[550]">{username || "Hojam"}</b>
                     </span>
@@ -1447,7 +1451,7 @@ function App() {
                   </div>
 
                   {transcript && (
-                    <div className="px-3 py-3 max-w-[1280px] w-full relative">
+                    <div className="px-3 py-3 max-w-[768px] w-full relative">
                       <div
                         className="rounded-[28px] border border-border/80 bg-background/80 p-4 shadow-sm animate-in fade-in slide-in-from-bottom-2 !duration-0"
                         onTouchStart={(e) => e.currentTarget.setAttribute('data-y', e.touches[0].clientY.toString())}
@@ -1464,7 +1468,7 @@ function App() {
                   )}
 
                   {geminiReply && (
-                    <div className="px-3 py-3 max-w-[1280px] w-full relative">
+                    <div className="px-3 py-3 max-w-[768px] w-full relative">
                       <div
                         className="rounded-[28px] border border-border/80 bg-background/80 p-4 shadow-sm animate-in fade-in slide-in-from-bottom-2 !duration-0"
                         onTouchStart={(e) => e.currentTarget.setAttribute('data-y', e.touches[0].clientY.toString())}
@@ -1481,10 +1485,10 @@ function App() {
                   )}
 
                   {submitError && (
-                    <div className="px-3 py-2 max-w-[1280px] w-full text-sm text-red-600">{submitError}</div>
+                    <div className="px-3 py-2 max-w-[768px] w-full text-sm text-red-600">{submitError}</div>
                   )}
 
-                  <div className="mx-3 px-3 max-w-[1280px] w-full flex justify-center mt-auto border-t rounded-tl-[40px] rounded-tr-[40px] border-[#eee] bg-background/90 px-4 py-4 backdrop-blur-sm dark:border-[#eee6] transition-none !duration-0">
+                  <div className="mx-3 px-3 max-w-[768px] w-full flex justify-center mt-auto border-t rounded-tl-[40px] rounded-tr-[40px] border-[#eee] bg-background/90 px-4 py-4 backdrop-blur-sm dark:border-[#eee6] transition-none !duration-0">
                     <div className="flex w-full max-w-md flex-col items-center gap-4 ">
                       {isRecording && (
                         <div className="flex h-20 w-full items-end justify-center gap-1">
@@ -1557,14 +1561,14 @@ function App() {
               path="/tasks"
               element={
                 <>
-                  <div className="px-3 py-4 max-w-[1280px] w-full text-center">
+                  <div className="px-3 py-4 max-w-[768px] w-full text-center">
                     <div className="text-2xl font-medium">Tasklar ro'yxati</div>
                     <div className="mt-1 text-sm text-muted-foreground">
                       KotibaAI yaratgan barcha tasklar shu sahifada boshqariladi
                     </div>
                   </div>
                   {tasksList}
-                  <div className="px-3 max-w-[1280px] w-full flex justify-center mt-auto pb-4 pt-4 animate-in fade-in slide-in-from-bottom-4 !duration-0">
+                  <div className="px-3 max-w-[768px] w-full flex justify-center mt-auto pb-4 pt-4 animate-in fade-in slide-in-from-bottom-4 !duration-0">
                     <BottomNav />
                   </div>
                 </>
@@ -1574,7 +1578,7 @@ function App() {
               path="/expenses"
               element={
                 <>
-                  <div className="px-3 py-6 max-w-[1280px] w-full text-center animate-in fade-in slide-in-from-top-4 !duration-0 flex flex-col items-center">
+                  <div className="px-3 py-6 max-w-[768px] w-full text-center animate-in fade-in slide-in-from-top-4 !duration-0 flex flex-col items-center">
                     <div className="text-3xl font-semibold tracking-tight">Xarajatlar</div>
                     <div className="mt-2 mb-4 text-sm text-muted-foreground">
                       Umumiy xarajatlar tahlili va nazorati
@@ -1591,7 +1595,7 @@ function App() {
                     </Button>
                   </div>
                   {expensesList}
-                  <div className="px-3 max-w-[1280px] w-full flex justify-center mt-auto pb-4 pt-4 animate-in fade-in slide-in-from-bottom-4 !duration-0">
+                  <div className="px-3 max-w-[768px] w-full flex justify-center mt-auto pb-4 pt-4 animate-in fade-in slide-in-from-bottom-4 !duration-0">
                     <BottomNav />
                   </div>
                 </>
