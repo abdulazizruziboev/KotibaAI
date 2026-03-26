@@ -1357,7 +1357,7 @@ function App() {
       {editTaskModal}
       {limitModal}
       <div className="min-h-screen w-full bg-background text-foreground flex flex-col items-center">
-        <div className=" px-3 py-2 max-w-[768px] w-full border-b border-b-[#0001] flex items-center justify-between rounded-bl-[20px] rounded-br-[20px] bg-background/95 backdrop-blur-sm dark:border-[#fff4]">
+        <div className="sticky top-0 z-99 px-3 py-2 max-w-[768px] w-full border-b border-b-[#0001] flex items-center justify-between rounded-bl-[20px] rounded-br-[20px] bg-background/90 backdrop-blur-sm dark:border-[#fff4]">
           <div className="text-base font-medium tracking-[0.01em]">
             Kotiba<b className="font-semibold">AI</b>
           </div>
@@ -1429,7 +1429,7 @@ function App() {
                           <div className="space-y-2 pt-2">
                             <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">Ism</label>
                             <input
-                              className="w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
+                              className="w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50 !duration-0"
                               value={draftUsername}
                               onChange={(event) => setDraftUsername(event.target.value)}
                               placeholder="Ismingizni kiriting"
@@ -1439,7 +1439,7 @@ function App() {
                           <div className="space-y-2 pt-2">
                             <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">Vaqt zonasi (GMT)</label>
                             <select
-                              className="w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50 appearance-none"
+                              className="!duration-0 w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50 appearance-none"
                               value={selectedTimezone}
                               onChange={(e) => setSelectedTimezone(e.target.value)}
                             >
@@ -1465,7 +1465,7 @@ function App() {
                             <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-top-2 !duration-0">
                               <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">GMT Offset (masalan: +5, -3.5)</label>
                               <input
-                                className="w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
+                                className="!duration-0 w-full rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 text-sm outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
                                 value={customGmtOffset}
                                 onChange={(e) => setCustomGmtOffset(e.target.value)}
                                 placeholder="+5"
@@ -1488,7 +1488,7 @@ function App() {
                               UzbekVoice API key <span className="normal-case text-xs opacity-70 ml-1">(Ovoz uchun)</span>
                             </label>
                             <input
-                              className="w-full text-sm rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
+                              className="!duration-0 w-full text-sm rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
                               value={sttApiKeyInput}
                               onChange={(event) => setSttApiKeyInput(event.target.value)}
                               placeholder="sk-..."
@@ -1501,7 +1501,7 @@ function App() {
                             </label>
                             <input
                               type="password"
-                              className="w-full text-sm rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
+                              className="!duration-0 w-full text-sm rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
                               value={geminiApiKeyInput}
                               onChange={(event) => setGeminiApiKeyInput(event.target.value)}
                               placeholder="AIzaSy..."
