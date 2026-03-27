@@ -32,6 +32,8 @@ import {
 import React from "react"
 import { toast } from "sonner"
 import { BrowserRouter, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom"
+import { ExpenseAddModal } from "./components/ExpenseAddModal"
+import { ExpenseLimitModal } from "./components/ExpenseLimitModal"
 
 const barCount = 24
 const TASKS_STORAGE_KEY = "kotiba_tasks"
@@ -215,7 +217,7 @@ const normalizeExpense = (exp) => {
     amount: amount,
     currency: currency,
     category: exp.category || "Boshqa",
-    date: exp.date || new Date().toISOString(),
+    date: exp.date || exp.spentAt || new Date().toISOString(),
     createdAt: new Date().toISOString(),
   }
 }
@@ -323,6 +325,9 @@ function App() {
     const savedTheme = localStorage.getItem("theme")
     return savedTheme ? savedTheme === "light" : true
   })
+  const [selectedGeminiModel, setSelectedGeminiModel] = React.useState(
+    () => localStorage.getItem("kotiba_gemini_model") || "gemini-3-flash-preview"
+  )
   const [isRecording, setIsRecording] = React.useState(false)
   const [isPaused, setIsPaused] = React.useState(false)
   const [audioUrl, setAudioUrl] = React.useState(null)
@@ -799,7 +804,7 @@ function App() {
       }
 
       const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${selectedGeminiModel}:generateContent?key=${geminiApiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1041,6 +1046,7 @@ function App() {
     localStorage.setItem("gemini_api_key", cleanGeminiKey)
     localStorage.setItem("kotiba_timezone", selectedTimezone)
     localStorage.setItem("kotiba_custom_gmt_offset", customGmtOffset)
+    localStorage.setItem("kotiba_gemini_model", selectedGeminiModel)
 
     setUsername(cleanName)
     setSttApiKeyInput(cleanSttKey)
@@ -1579,6 +1585,22 @@ function App() {
                               placeholder="AIzaSy..."
                             />
                           </div>
+                          
+                          <div className="space-y-2 pt-2">
+                            <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">
+                              Model <span className="normal-case text-xs opacity-70 ml-1">(Gemini versiyasi)</span>
+                            </label>
+                            <select
+                              className="!duration-0 w-full text-sm rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50 appearance-none"
+                              value={selectedGeminiModel}
+                              onChange={(e) => setSelectedGeminiModel(e.target.value)}
+                            >
+                              <option value="gemini-3-flash-preview">🚀 Gemini 3 Flash (Tavsiya)</option>
+                              <option value="gemini-2.0-flash">⚡ Gemini 2.0 Flash</option>
+                              <option value="gemini-1.5-flash">💡 Gemini 1.5 Flash</option>
+                              <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
 
@@ -1765,16 +1787,25 @@ function App() {
                     <div className="mt-2 mb-4 text-sm text-muted-foreground">
                       Umumiy xarajatlar tahlili va nazorati
                     </div>
-                    <Button
-                      variant={expenseLimit > 0 ? "secondary" : "outline"}
-                      className="rounded-full h-8 px-4 text-[13px] font-medium shadow-xs transition-all !duration-0"
-                      onClick={() => {
-                        setDraftExpenseLimit(expenseLimit)
-                        setIsLimitModalOpen(true)
-                      }}
-                    >
-                      {expenseLimit > 0 ? `Summa Limiti: ${expenseLimit.toLocaleString("uz-UZ")} UZS` : "Limit o'rnatish"}
-                    </Button>
+                    <div className="flex gap-2 mb-4">
+                      <ExpenseAddModal
+                        className="rounded-full h-8 px-4 text-[13px] font-medium shadow-xs transition-all !duration-0"
+                        onAddExpense={(newExp) => {
+                          const normalized = normalizeExpense(newExp)
+                          persistExpenses([...(expenses || []), normalized])
+                          toast.success("Xarajat qo'shildi")
+                        }}
+                      />
+                      <ExpenseLimitModal
+                        settings={{ monthlyLimit: expenseLimit }}
+                        onSaveSettings={(s) => {
+                          const val = Number(s.monthlyLimit)
+                          setExpenseLimit(val)
+                          localStorage.setItem("kotiba_expense_limit", val.toString())
+                          toast.success("Limit saqlandi")
+                        }}
+                      />
+                    </div>
                   </div>
                   {expensesList}
                   <div className="px-3 max-w-[768px] w-full flex justify-center mt-auto pb-4 pt-4 animate-in fade-in slide-in-from-bottom-4 !duration-0">
