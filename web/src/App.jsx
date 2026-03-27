@@ -39,6 +39,7 @@ const barCount = 24
 const TASKS_STORAGE_KEY = "kotiba_tasks"
 const EXPENSES_STORAGE_KEY = "kotiba_expenses"
 const PROMPT_STORAGE_KEY = "kotiba_prompt_version"
+const STABLE_GEMINI_FALLBACK = "gemini-1.5-flash-latest"
 
 const KOTIBA_PROMPT = `You are KotibaAI — an Uzbek executive assistant AND a 20+ year professional Uzbek language editor and proofreader.
 
@@ -222,7 +223,9 @@ const normalizeExpense = (exp) => {
   }
 }
 
-function SwipeableRoutes({ children }) {
+/* --- Components moved outside for optimization --- */
+
+const SwipeableRoutes = React.memo(({ children }) => {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -234,7 +237,6 @@ function SwipeableRoutes({ children }) {
   const onTouchStart = (e) => {
     const targetTag = e.target.tagName.toLowerCase()
     if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select' || targetTag === 'button') return
-    // Allow horizontal swipes over dialogs or special elements? Sometimes better to just restrict to main view.
     setTouchEnd(null)
     setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
   }
@@ -246,7 +248,6 @@ function SwipeableRoutes({ children }) {
     const distanceX = touchStart.x - currentX
     const distanceY = Math.abs(touchStart.y - currentY)
 
-    // If scrolling vertically, cancel horizontal swipe
     if (distanceY > 40 && Math.abs(distanceX) < 40) {
       setTouchStart(null)
       return
@@ -272,7 +273,6 @@ function SwipeableRoutes({ children }) {
     }
     setTouchStart(null)
     setTouchEnd(null)
-    setIsSwiping(false)
   }
 
   return (
@@ -285,7 +285,48 @@ function SwipeableRoutes({ children }) {
       {children}
     </div>
   )
-}
+})
+
+const BottomNav = React.memo(() => (
+  <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/90 p-1.5 shadow-sm backdrop-blur-sm">
+    <NavLink
+      to="/settings"
+      className={({ isActive }) =>
+        `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
+        }`
+      }
+    >
+      <SlidersHorizontalIcon className="size-5" />
+    </NavLink>
+    <NavLink
+      to="/"
+      className={({ isActive }) =>
+        `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
+        }`
+      }
+    >
+      <MicIcon className="size-5" />
+    </NavLink>
+    <NavLink
+      to="/tasks"
+      className={({ isActive }) =>
+        `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
+        }`
+      }
+    >
+      <ListTodoIcon className="size-5" />
+    </NavLink>
+    <NavLink
+      to="/expenses"
+      className={({ isActive }) =>
+        `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
+        }`
+      }
+    >
+      <WalletIcon className="size-5" />
+    </NavLink>
+  </div>
+))
 
 const extractJsonObject = (text) => {
   const first = text.indexOf("{")
@@ -326,7 +367,7 @@ function App() {
     return savedTheme ? savedTheme === "light" : true
   })
   const [selectedGeminiModel, setSelectedGeminiModel] = React.useState(
-    () => localStorage.getItem("kotiba_gemini_model") || "gemini-1.5-flash"
+    () => localStorage.getItem("kotiba_gemini_model") || "gemini-3-flash-preview"
   )
   const [isRecording, setIsRecording] = React.useState(false)
   const [isPaused, setIsPaused] = React.useState(false)
@@ -807,9 +848,10 @@ function App() {
       let retries = 0;
       const maxRetries = 2;
 
+      let currentModel = selectedGeminiModel;
       while (retries <= maxRetries) {
         geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${selectedGeminiModel}:generateContent?key=${geminiApiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${geminiApiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -829,6 +871,13 @@ function App() {
             }),
           }
         )
+
+        if (geminiResponse.status === 404 && currentModel !== STABLE_GEMINI_FALLBACK) {
+          console.warn(`Model ${currentModel} not found, falling back to ${STABLE_GEMINI_FALLBACK}`);
+          currentModel = STABLE_GEMINI_FALLBACK;
+          // Don't count as a retry, just switch model and try again immediately
+          continue;
+        }
 
         if (geminiResponse.status === 429 || geminiResponse.status === 503) {
           if (retries < maxRetries) {
@@ -883,6 +932,8 @@ function App() {
     saveGeneratedData,
     sttApiKey,
     username,
+    selectedGeminiModel,
+    selectedTimezone,
   ])
 
   const togglePause = React.useCallback(() => {
@@ -1069,7 +1120,7 @@ function App() {
     setSttApiKeyInput(cleanSttKey)
     setGeminiApiKeyInput(cleanGeminiKey)
     toast.success("Sozlamalar saqlandi")
-  }, [draftUsername, geminiApiKeyInput, sttApiKeyInput, selectedTimezone, customGmtOffset])
+  }, [draftUsername, geminiApiKeyInput, sttApiKeyInput, selectedTimezone, customGmtOffset, selectedGeminiModel])
 
   const markTaskDone = React.useCallback(
     (taskId) => {
@@ -1253,46 +1304,6 @@ function App() {
     </div>
   )
 
-  const BottomNav = () => (
-    <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/90 p-1.5 shadow-sm backdrop-blur-sm">
-      <NavLink
-        to="/settings"
-        className={({ isActive }) =>
-          `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
-          }`
-        }
-      >
-        <SlidersHorizontalIcon className="size-5" />
-      </NavLink>
-      <NavLink
-        to="/"
-        className={({ isActive }) =>
-          `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
-          }`
-        }
-      >
-        <MicIcon className="size-5" />
-      </NavLink>
-      <NavLink
-        to="/tasks"
-        className={({ isActive }) =>
-          `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
-          }`
-        }
-      >
-        <ListTodoIcon className="size-5" />
-      </NavLink>
-      <NavLink
-        to="/expenses"
-        className={({ isActive }) =>
-          `flex size-[42px] items-center justify-center rounded-full transition-all duration-300 ${isActive ? "bg-black/10 dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/50"
-          }`
-        }
-      >
-        <WalletIcon className="size-5" />
-      </NavLink>
-    </div>
-  )
 
   const tasksList = (
     <div className="px-3 py-3 max-w-[768px] w-full">
@@ -1612,11 +1623,11 @@ function App() {
                               value={selectedGeminiModel}
                               onChange={(e) => setSelectedGeminiModel(e.target.value)}
                             >
-                              <option value="gemini-1.5-flash">💡 Gemini 1.5 Flash (Eng yuqori limit)</option>
-                              <option value="gemini-1.5-flash-8b">⚡ Gemini 1.5 Flash-8B (Juda tez)</option>
-                              <option value="gemini-2.5-flash">🚀 Gemini 2.5 Flash</option>
-                              <option value="gemini-3-flash-preview">✨ Gemini 3 Flash (Paid only)</option>
-                              <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro (Aql markazi)</option>
+                              <option value="gemini-1.5-flash-latest">💡 Gemini 1.5 Flash (Eng yuqori limit)</option>
+                              <option value="gemini-1.5-flash-8b-latest">⚡ Gemini 1.5 Flash-8B (Juda tez)</option>
+                              <option value="gemini-2.0-flash">🚀 Gemini 2.0 Flash (Barqaror)</option>
+                              <option value="gemini-1.5-pro-latest">🧠 Gemini 1.5 Pro (Aql markazi)</option>
+                              
                             </select>
                           </div>
                         </div>
