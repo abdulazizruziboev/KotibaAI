@@ -60,22 +60,43 @@ Schema:
     "amount": 0,
     "currency": "UZS | USD"
   },
-  "tasks": [ ... (as before) ... ],
-  "expenses": [ ... (as before) ... ]
+  "tasks": [
+    {
+      "title": "short task title in standard Uzbek",
+      "note": "optional extra context",
+      "action_text": "what should be done when reminder fires",
+      "schedule_at": "ISO datetime or null",
+      "remind_before_minutes": 0,
+      "repeat": {
+        "type": "none | hourly | daily | weekly | custom",
+        "interval_minutes": null
+      },
+      "auto_delete_at": "ISO datetime or null",
+      "notify_in_site": true,
+      "notify_voice": true
+    }
+  ],
+  "expenses": [
+    {
+      "title": "short description of expense in standard Uzbek",
+      "amount": 0,
+      "currency": "UZS | USD",
+      "category": "category of expense",
+      "date": "ISO datetime or null"
+    }
+  ]
 }
 
-- Identify intent precisely! If multiple actions are requested, use "mixed".
-- Navigation:
-  - "Asosiy", "Uy", "Bosh sahifa" → "home"
-  - "Tasklar", "Vazifalar", "Ro'yxat" → "tasks"
-  - "Xarajatlar", "Pullar" → "expenses"
-  - "Sozlamalar" → "settings" 
-- Theme Change: ONLY set "theme" if user EXPLICITLY asks to change "rejim" or "mavzu" (e.g., "qorong'i rejimni yoq", "tungi qilsin").
-  - DO NOT change theme for navigation commands like "sozlamalarga o't".
-  - Theme targets: "Qorong'i/Tungi" → "dark", "Kundizgi/Yorug'" → "light".
-- Personalization: If "User name" is not "Noma'lum", use it to address the user in "assistant_reply".
-- Always confirm ALL actions in "assistant_reply".
-- Always return valid JSON only.`
+Rules:
+1. Intent Recognition:
+   - "Mixed" if multiple things happen at once.
+   - Any "eslat", "eslatib qo'y", "eslatib qo'yaman", "task qo'sh" statement → create a task.
+   - Any mention of spending, costs, buying → create an expense.
+2. Text Correction: Silently correct dialects (imlo, grammar) to standard literary Uzbek.
+3. Navigation: "Asosiy/Uy" -> "home", "Tasklar" -> "tasks", "Xarajatlar" -> "expenses", "Sozlamalar" -> "settings".
+4. Theme: ONLY change theme if explicitly asked ("tungi rejim", "qorong'i rejim"). "Sozlamalarga o't" is NOT a theme change.
+5. Personalization: If "User name" is provided and not "Noma'lum", address the user by name.
+6. Return valid JSON only.`
 
 const createEmptyLevels = () => Array.from({ length: barCount }, () => 10)
 
