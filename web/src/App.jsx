@@ -23,6 +23,7 @@ import { toast } from "sonner"
 import { BrowserRouter, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 import { ExpenseAddModal } from "./components/ExpenseAddModal"
 import { ExpenseLimitModal } from "./components/ExpenseLimitModal"
+import { ExpenseMonitoringModal } from "./components/ExpenseMonitoringModal"
 
 const barCount = 24
 const TASKS_STORAGE_KEY = "kotiba_tasks"
@@ -213,6 +214,39 @@ const normalizeExpense = (exp) => {
     date: exp.date || exp.spentAt || new Date().toISOString(),
     createdAt: new Date().toISOString(),
   }
+}
+
+const buildCategorySummary = (items) => {
+  const totals = new Map()
+  for (const item of items || []) {
+    const category = (item.category || "Boshqa").trim() || "Boshqa"
+    const amount = Number(item.amount) || 0
+    totals.set(category, (totals.get(category) || 0) + amount)
+  }
+
+  return Array.from(totals.entries())
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total)
+}
+
+const buildMonthlyTrend = (items) => {
+  const totalsByMonth = new Map()
+  for (const item of items || []) {
+    const date = new Date(item.date || item.createdAt || Date.now())
+    if (Number.isNaN(date.getTime())) continue
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+    const amount = Number(item.amount) || 0
+    totalsByMonth.set(key, (totalsByMonth.get(key) || 0) + amount)
+  }
+
+  const sorted = Array.from(totalsByMonth.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  let previous = null
+
+  return sorted.map(([period, total]) => {
+    const delta = previous === null ? null : total - previous
+    previous = total
+    return { period, total, delta }
+  })
 }
 
 /* --- Components moved outside for optimization --- */
@@ -407,6 +441,9 @@ function AppContent() {
   const [expenseLimit, setExpenseLimit] = React.useState(() => Number(localStorage.getItem("kotiba_expense_limit")) || 0)
   const [isLimitModalOpen, setIsLimitModalOpen] = React.useState(false)
   const [draftExpenseLimit, setDraftExpenseLimit] = React.useState(0)
+  const [isExpenseMonitoringOpen, setIsExpenseMonitoringOpen] = React.useState(false)
+  const [selectedExpenseCategory, setSelectedExpenseCategory] = React.useState("all")
+  const [expenseSortMode, setExpenseSortMode] = React.useState("date_desc")
   const [isOnline, setIsOnline] = React.useState(navigator.onLine)
   const [selectedTimezone, setSelectedTimezone] = React.useState(
     () => localStorage.getItem("kotiba_timezone") || "Asia/Tashkent"
@@ -1385,6 +1422,58 @@ function AppContent() {
       doc.setFontSize(12)
       doc.setTextColor(0)
       doc.text(`Umumiy xarajat: ${totalExpenses.toLocaleString("uz-UZ")} UZS`, 14, finalY + 15)
+
+      const categorySummary = buildCategorySummary(expenses)
+      const topCategory = categorySummary[0]
+      const categoryStartY = finalY + 24
+      doc.setFontSize(13)
+      doc.text("Kategoriya bo'yicha tahlil", 14, categoryStartY)
+      doc.setFontSize(10)
+      if (topCategory) {
+        doc.text(
+          `Eng ko'p sarflangan kategoriya: ${topCategory.category} (${topCategory.total.toLocaleString("uz-UZ")} UZS)`,
+          14,
+          categoryStartY + 7
+        )
+      } else {
+        doc.text("Kategoriya bo'yicha ma'lumot topilmadi.", 14, categoryStartY + 7)
+      }
+
+      autoTable(doc, {
+        head: [["Kategoriya", "Jami summa (UZS)"]],
+        body: categorySummary.slice(0, 10).map((row) => [
+          row.category,
+          row.total.toLocaleString("uz-UZ"),
+        ]),
+        startY: categoryStartY + 11,
+        theme: "striped",
+        headStyles: { fillColor: [34, 197, 94] },
+        styles: { font: "helvetica", fontSize: 10 },
+      })
+
+      const trendRows = buildMonthlyTrend(expenses)
+      const trendStartY = (doc.lastAutoTable?.finalY || categoryStartY + 16) + 10
+      doc.setFontSize(13)
+      doc.text("Vaqt bo'yicha o'zgarish (oyma-oy)", 14, trendStartY)
+
+      autoTable(doc, {
+        head: [["Oy", "Jami summa (UZS)", "Oldingi oyga nisbatan"]],
+        body: trendRows.length
+          ? trendRows.map((row) => {
+              let deltaText = "-"
+              if (row.delta !== null) {
+                if (row.delta > 0) deltaText = `+${row.delta.toLocaleString("uz-UZ")} (O'sish)`
+                else if (row.delta < 0) deltaText = `${row.delta.toLocaleString("uz-UZ")} (Kamayish)`
+                else deltaText = "0 (O'zgarmagan)"
+              }
+              return [row.period, row.total.toLocaleString("uz-UZ"), deltaText]
+            })
+          : [["Ma'lumot yo'q", "-", "-"]],
+        startY: trendStartY + 4,
+        theme: "striped",
+        headStyles: { fillColor: [79, 70, 229] },
+        styles: { font: "helvetica", fontSize: 10 },
+      })
       
       const fileName = `xarajatlar_${new Date().toISOString().slice(0, 10)}.pdf`
       doc.save(fileName)
@@ -1441,6 +1530,34 @@ function AppContent() {
 
   const activeTasks = (tasks || []).filter((task) => task.status === "active")
   const doneTasks = (tasks || []).filter((task) => task.status === "done")
+  const expenseCategories = React.useMemo(() => {
+    const unique = new Set((expenses || []).map((exp) => (exp.category || "Boshqa").trim() || "Boshqa"))
+    return Array.from(unique).sort((a, b) => a.localeCompare(b, "uz"))
+  }, [expenses])
+  const visibleExpenses = React.useMemo(() => {
+    const base =
+      selectedExpenseCategory === "all"
+        ? [...(expenses || [])]
+        : (expenses || []).filter((exp) => (exp.category || "Boshqa").trim() === selectedExpenseCategory)
+
+    if (expenseSortMode === "amount_desc") {
+      base.sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0))
+    } else if (expenseSortMode === "amount_asc") {
+      base.sort((a, b) => (Number(a.amount) || 0) - (Number(b.amount) || 0))
+    } else if (expenseSortMode === "category_asc") {
+      base.sort((a, b) =>
+        ((a.category || "Boshqa").trim() || "Boshqa").localeCompare(
+          (b.category || "Boshqa").trim() || "Boshqa",
+          "uz"
+        )
+      )
+    } else if (expenseSortMode === "date_asc") {
+      base.sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime())
+    } else {
+      base.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+    }
+    return base
+  }, [expenses, selectedExpenseCategory, expenseSortMode])
 
 
   const expensesList = (
@@ -1450,7 +1567,9 @@ function AppContent() {
           <span className="text-sm font-medium">Xarajatlar</span>
           <div className="text-right flex flex-col items-end">
             <span className="text-[15px] font-semibold text-primary tracking-tight">{totalExpenses.toLocaleString("uz-UZ")} UZS</span>
-            <span className="text-[11px] text-muted-foreground mt-0.5">{expenses.length} ta operatsiya</span>
+            <span className="text-[11px] text-muted-foreground mt-0.5">
+              {visibleExpenses.length} / {expenses.length} ta operatsiya
+            </span>
           </div>
         </div>
 
@@ -1461,12 +1580,40 @@ function AppContent() {
           </div>
         )}
 
+        {expenses.length > 0 && (
+          <div className="mx-1 mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              value={selectedExpenseCategory}
+              onChange={(e) => setSelectedExpenseCategory(e.target.value)}
+            >
+              <option value="all">Barcha kategoriyalar</option>
+              {expenseCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              value={expenseSortMode}
+              onChange={(e) => setExpenseSortMode(e.target.value)}
+            >
+              <option value="date_desc">Sana: yangi -&gt; eski</option>
+              <option value="date_asc">Sana: eski -&gt; yangi</option>
+              <option value="amount_desc">Summa: katta -&gt; kichik</option>
+              <option value="amount_asc">Summa: kichik -&gt; katta</option>
+              <option value="category_asc">Kategoriya: A -&gt; Z</option>
+            </select>
+          </div>
+        )}
+
         <div className="mx-1 mb-2 border-b border-border/40" />
         <div className="space-y-1">
-          {(!expenses || expenses.length === 0) && (
+          {(!visibleExpenses || visibleExpenses.length === 0) && (
             <div className="py-4 px-2 text-sm text-muted-foreground">Hozircha xarajat yo'q.</div>
           )}
-          {(expenses || []).map((exp, index) => (
+          {visibleExpenses.map((exp, index) => (
             <div key={exp.id}>
               <div className="flex items-center justify-between py-3">
                 <div className="min-w-0 flex-1 pr-4">
@@ -1488,7 +1635,7 @@ function AppContent() {
                   </Button>
                 </div>
               </div>
-              {index !== expenses.length - 1 && <div className="mx-3 border-b border-border/40" />}
+              {index !== visibleExpenses.length - 1 && <div className="mx-3 border-b border-border/40" />}
             </div>
           ))}
         </div>
@@ -2054,6 +2201,16 @@ function AppContent() {
                         }}
                       />
                     </div>
+                    <div className="w-full px-1 mb-3">
+                      <Button
+                        variant="outline"
+                        className="w-full rounded-2xl h-12 text-[14px] font-medium border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 !duration-0 border-dashed"
+                        onClick={() => setIsExpenseMonitoringOpen(true)}
+                      >
+                        <LayoutGridIcon className="mr-2 size-5" />
+                        Monitoringni ko'rish (Chartlar)
+                      </Button>
+                    </div>
                     <div className="w-full px-1 mb-6">
                       <Button
                         variant="outline"
@@ -2064,6 +2221,13 @@ function AppContent() {
                         PDF yuklab olish (Hisobot)
                       </Button>
                     </div>
+                    <ExpenseMonitoringModal
+                      open={isExpenseMonitoringOpen}
+                      onOpenChange={setIsExpenseMonitoringOpen}
+                      expenses={expenses || []}
+                      totalExpenses={totalExpenses}
+                      expenseLimit={expenseLimit}
+                    />
                   </div>
                   {expensesList}
                   <div className="px-3 max-w-[768px] w-full flex justify-center mt-auto pb-4 pt-4 animate-in fade-in slide-in-from-bottom-4 !duration-0">
