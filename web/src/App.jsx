@@ -9,26 +9,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
-  BellIcon,
-  BellOffIcon,
-  Clock3Icon,
-  SlidersHorizontalIcon,
-  ListTodoIcon,
-  MicIcon,
-  MoonIcon,
-  PauseIcon,
-  PlayIcon,
-  RepeatIcon,
-  SendIcon,
-  SunIcon,
-  Trash2Icon,
-  WalletIcon,
-  XIcon,
-  PencilIcon,
-  CheckCircleIcon,
-  WifiOffIcon,
-  LoaderIcon,
+  BellIcon, BellOffIcon, CheckCircle2Icon, CircleIcon, MicIcon,
+  MoonIcon, PlusIcon, SettingsIcon, SunIcon, Trash2Icon, XIcon,
+  ChevronRightIcon, LayoutGridIcon, ReceiptTextIcon, ListTodoIcon,
+  FileTextIcon, WalletIcon, Clock3Icon, SlidersHorizontalIcon,
+  PauseIcon, PlayIcon, RepeatIcon, SendIcon, PencilIcon,
+  CheckCircleIcon, WifiOffIcon, LoaderIcon
 } from "lucide-react"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import React from "react"
 import { toast } from "sonner"
 import { BrowserRouter, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom"
@@ -350,6 +339,7 @@ function AppContent() {
   const [expenses, setExpenses] = React.useState(() =>
     safeJsonParse(localStorage.getItem(EXPENSES_STORAGE_KEY), [])
   )
+  const totalExpenses = (expenses || []).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0)
   const [username, setUsername] = React.useState(() => localStorage.getItem("username") || "")
   const [draftUsername, setDraftUsername] = React.useState(
     () => localStorage.getItem("username") || ""
@@ -1251,23 +1241,33 @@ function AppContent() {
     toast.success("Sozlamalar saqlandi")
   }, [draftUsername, geminiApiKeyInput, sttApiKeyInput, openaiApiKeyInput, selectedTimezone, customGmtOffset, selectedGeminiModel])
 
-  const handleForceUpdate = React.useCallback(() => {
+  const handleForceUpdate = React.useCallback(async () => {
+    toast.info("Keshlar tozalanmoqda...", { duration: 3000 })
+    
+    // 1. Unregister all Service Workers
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (let registration of registrations) {
-          registration.unregister()
-        }
-      })
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      for (const registration of registrations) {
+        await registration.unregister()
+      }
     }
+
+    // 2. Delete all Caches
     if ("caches" in window) {
-      caches.keys().then((names) => {
-        for (let name of names) caches.delete(name)
-      })
+      const names = await caches.keys()
+      for (const name of names) {
+        await caches.delete(name)
+      }
     }
-    toast.info("Yangilanishlar yuklanmoqda...", { duration: 2000 })
+
+    // 3. Clear session storage (optional, but requested "hamma cache")
+    sessionStorage.clear()
+    
+    toast.success("Ilova yangilandi!", { description: "Sahifa hozir qayta yuklanadi." })
+    
     setTimeout(() => {
       window.location.reload(true)
-    }, 1000)
+    }, 1500)
   }, [])
 
   const markTaskDone = React.useCallback(
@@ -1350,6 +1350,51 @@ function AppContent() {
     [persistTasks, tasks]
   )
 
+  const exportExpensesToPdf = React.useCallback(() => {
+    if (!expenses || expenses.length === 0) {
+      toast.error("Xarajatlar mavjud emas")
+      return
+    }
+
+    try {
+      const doc = new jsPDF()
+      doc.setFontSize(18)
+      doc.text("KotibaAI - Xarajatlar Hisoboti", 14, 20)
+      doc.setFontSize(11)
+      doc.setTextColor(100)
+      doc.text(`Sana: ${new Date().toLocaleDateString("uz-UZ")}`, 14, 30)
+      
+      const tableColumn = ["Nomi", "Summa (UZS)", "Kategoriya", "Sana"]
+      const tableRows = expenses.map(exp => [
+        exp.title,
+        Number(exp.amount).toLocaleString("uz-UZ"),
+        exp.category || "Boshqa",
+        formatDateTime(exp.date)
+      ])
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 35,
+        theme: "striped",
+        headStyles: { fillColor: [79, 70, 229] }, // Indigo-600
+        styles: { font: "helvetica", fontSize: 10 },
+      })
+
+      const finalY = doc.lastAutoTable?.finalY || 40
+      doc.setFontSize(12)
+      doc.setTextColor(0)
+      doc.text(`Umumiy xarajat: ${totalExpenses.toLocaleString("uz-UZ")} UZS`, 14, finalY + 15)
+      
+      const fileName = `xarajatlar_${new Date().toISOString().slice(0, 10)}.pdf`
+      doc.save(fileName)
+      toast.success("PDF tayyor bo'ldi!")
+    } catch (err) {
+      console.error("PDF export error:", err)
+      toast.error("PDF saqlashda xatolik yuz berdi")
+    }
+  }, [expenses, totalExpenses])
+
   React.useEffect(() => {
     document.documentElement.classList.toggle("dark", !isLight)
     localStorage.setItem("theme", isLight ? "light" : "dark")
@@ -1397,7 +1442,6 @@ function AppContent() {
   const activeTasks = (tasks || []).filter((task) => task.status === "active")
   const doneTasks = (tasks || []).filter((task) => task.status === "done")
 
-  const totalExpenses = (expenses || []).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0)
 
   const expensesList = (
     <div className="px-3 py-3 max-w-[768px] w-full animate-in fade-in zoom-in-95 !duration-0">
@@ -2009,6 +2053,16 @@ function AppContent() {
                           toast.success("Limit saqlandi")
                         }}
                       />
+                    </div>
+                    <div className="w-full px-1 mb-6">
+                      <Button
+                        variant="outline"
+                        className="w-full rounded-2xl h-12 text-[14px] font-medium border-indigo-500/20 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 !duration-0 border-dashed"
+                        onClick={exportExpensesToPdf}
+                      >
+                        <FileTextIcon className="mr-2 size-5" />
+                        PDF yuklab olish (Hisobot)
+                      </Button>
                     </div>
                   </div>
                   {expensesList}
