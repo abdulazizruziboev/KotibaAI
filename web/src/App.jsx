@@ -326,7 +326,7 @@ function App() {
     return savedTheme ? savedTheme === "light" : true
   })
   const [selectedGeminiModel, setSelectedGeminiModel] = React.useState(
-    () => localStorage.getItem("kotiba_gemini_model") || "gemini-3-flash-preview"
+    () => localStorage.getItem("kotiba_gemini_model") || "gemini-1.5-flash"
   )
   const [isRecording, setIsRecording] = React.useState(false)
   const [isPaused, setIsPaused] = React.useState(false)
@@ -803,35 +803,52 @@ function App() {
         return
       }
 
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${selectedGeminiModel}:generateContent?key=${geminiApiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            generationConfig: {
-              responseMimeType: "application/json",
-            },
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `${KOTIBA_PROMPT}\n\nUser name: ${username || "Noma'lum"}\nCurrent time (${selectedTimezone}): ${getFormattedTime()}\nUser speech:\n${recognizedText}`,
-                  },
-                ],
+      let geminiResponse;
+      let retries = 0;
+      const maxRetries = 2;
+
+      while (retries <= maxRetries) {
+        geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${selectedGeminiModel}:generateContent?key=${geminiApiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              generationConfig: {
+                responseMimeType: "application/json",
               },
-            ],
-          }),
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: `${KOTIBA_PROMPT}\n\nUser name: ${username || "Noma'lum"}\nCurrent time (${selectedTimezone}): ${getFormattedTime()}\nUser speech:\n${recognizedText}`,
+                    },
+                  ],
+                },
+              ],
+            }),
+          }
+        )
+
+        if (geminiResponse.status === 429 || geminiResponse.status === 503) {
+          if (retries < maxRetries) {
+            retries++;
+            const delay = Math.pow(2, retries) * 1000;
+            toast.info(`Gemini band, ${delay / 1000} soniyadan keyin qayta urinib ko'riladi...`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
         }
-      )
+        break;
+      }
 
       const geminiData = await geminiResponse.json()
 
       if (!geminiResponse.ok) {
         const geminiErrorMessage = geminiData?.error?.message || "Gemini so'rovida xatolik"
-        if (geminiErrorMessage.toLowerCase().includes("quota")) {
+        if (geminiErrorMessage.toLowerCase().includes("quota") || geminiResponse.status === 429) {
           toast.error("Gemini limiti tugagan", {
-            description: "Plan yoki billingni tekshiring, hozircha faqat transcript ko'rsatildi.",
+            description: "Hozircha faqat transcript ko'rsatildi. Modelni o'zgartirib ko'ring (Settings).",
           })
           setGeminiReply(fallbackKotibaObject(recognizedText).assistant_reply)
           chunksRef.current = []
@@ -1595,10 +1612,11 @@ function App() {
                               value={selectedGeminiModel}
                               onChange={(e) => setSelectedGeminiModel(e.target.value)}
                             >
-                              <option value="gemini-3-flash-preview">🚀 Gemini 3 Flash (Tavsiya)</option>
-                              <option value="gemini-2.0-flash">⚡ Gemini 2.0 Flash</option>
-                              <option value="gemini-1.5-flash">💡 Gemini 1.5 Flash</option>
-                              <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro</option>
+                              <option value="gemini-1.5-flash">💡 Gemini 1.5 Flash (Eng yuqori limit)</option>
+                              <option value="gemini-1.5-flash-8b">⚡ Gemini 1.5 Flash-8B (Juda tez)</option>
+                              <option value="gemini-2.5-flash">🚀 Gemini 2.5 Flash</option>
+                              <option value="gemini-3-flash-preview">✨ Gemini 3 Flash (Paid only)</option>
+                              <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro (Aql markazi)</option>
                             </select>
                           </div>
                         </div>
