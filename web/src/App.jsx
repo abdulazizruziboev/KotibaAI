@@ -494,9 +494,9 @@ function App() {
   const isHoldModeRef = React.useRef(false) // Safe ref for callback logic
   const recordingStartTimeRef = React.useRef(0)
 
-  const sttApiKey = sttApiKeyInput.trim()
-  const geminiApiKey = geminiApiKeyInput.trim()
-  const openaiApiKey = openaiApiKeyInput.trim()
+  const sttApiKey = sttApiKeyInput.trim() || import.meta.env.VITE_UZBEKVOICE_API_KEY || ""
+  const geminiApiKey = geminiApiKeyInput.trim() || import.meta.env.VITE_GEMINI_API_KEY || ""
+  const openaiApiKey = openaiApiKeyInput.trim() || import.meta.env.VITE_OPENAI_API_KEY || ""
 
   const rebuildAudioUrl = React.useCallback(() => {
     if (chunksRef.current.length === 0) return
