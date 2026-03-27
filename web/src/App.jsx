@@ -362,12 +362,18 @@ function App() {
       import.meta.env.VITE_GEMINI_API_KEY ||
       ""
   )
+  const [openaiApiKeyInput, setOpenaiApiKeyInput] = React.useState(
+    () =>
+      localStorage.getItem("openai_api_key") ||
+      import.meta.env.VITE_OPENAI_API_KEY ||
+      ""
+  )
   const [isLight, setIsLight] = React.useState(() => {
     const savedTheme = localStorage.getItem("theme")
     return savedTheme ? savedTheme === "light" : true
   })
   const [selectedGeminiModel, setSelectedGeminiModel] = React.useState(
-    () => localStorage.getItem("kotiba_gemini_model") || "gemini-3-flash-preview"
+    () => localStorage.getItem("kotiba_gemini_model") || "gpt-4o-mini"
   )
   const [isRecording, setIsRecording] = React.useState(false)
   const [isPaused, setIsPaused] = React.useState(false)
@@ -490,6 +496,7 @@ function App() {
 
   const sttApiKey = sttApiKeyInput.trim()
   const geminiApiKey = geminiApiKeyInput.trim()
+  const openaiApiKey = openaiApiKeyInput.trim()
 
   const rebuildAudioUrl = React.useCallback(() => {
     if (chunksRef.current.length === 0) return
@@ -837,81 +844,145 @@ function App() {
       const recognizedText = data?.result?.text || ""
       setTranscript(recognizedText)
 
-      if (!geminiApiKey) {
+      const isGptModel = selectedGeminiModel.startsWith("gpt")
+
+      if (!geminiApiKey && !openaiApiKey) {
         const fallback = fallbackKotibaObject(recognizedText)
         setGeminiReply(fallback.assistant_reply)
         chunksRef.current = []
         return
       }
 
-      let geminiResponse;
+      let aiResponse;
+      let aiData;
+      let aiErrorMessage;
+      let currentModel = selectedGeminiModel;
       let retries = 0;
       const maxRetries = 2;
 
-      let currentModel = selectedGeminiModel;
-      while (retries <= maxRetries) {
-        geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${geminiApiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              generationConfig: {
-                responseMimeType: "application/json",
-              },
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: `${KOTIBA_PROMPT}\n\nUser name: ${username || "Noma'lum"}\nCurrent time (${selectedTimezone}): ${getFormattedTime()}\nUser speech:\n${recognizedText}`,
-                    },
-                  ],
-                },
-              ],
-            }),
-          }
-        )
-
-        if (geminiResponse.status === 404 && currentModel !== STABLE_GEMINI_FALLBACK) {
-          console.warn(`Model ${currentModel} not found, falling back to ${STABLE_GEMINI_FALLBACK}`);
-          currentModel = STABLE_GEMINI_FALLBACK;
-          // Don't count as a retry, just switch model and try again immediately
-          continue;
+      if (isGptModel) {
+        if (!openaiApiKey) {
+          toast.error("OpenAI API key topilmadi", { description: "Burger menu ichida OpenAI API key kiriting." });
+          setGeminiReply(fallbackKotibaObject(recognizedText).assistant_reply);
+          chunksRef.current = [];
+          return;
         }
+        while (retries <= maxRetries) {
+          aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openaiApiKey}`,
+            },
+            body: JSON.stringify({
+              model: currentModel,
+              messages: [
+                { role: "system", content: KOTIBA_PROMPT },
+                { role: "user", content: `User name: ${username || "Noma'lum"}\nCurrent time (${selectedTimezone}): ${getFormattedTime()}\nUser speech:\n${recognizedText}` },
+              ],
+              response_format: { type: "json_object" },
+            }),
+          })
 
-        if (geminiResponse.status === 429 || geminiResponse.status === 503) {
-          if (retries < maxRetries) {
-            retries++;
-            const delay = Math.pow(2, retries) * 1000;
-            toast.info(`Gemini band, ${delay / 1000} soniyadan keyin qayta urinib ko'riladi...`);
-            await new Promise(r => setTimeout(r, delay));
+          if (aiResponse.status === 429 || aiResponse.status === 503) {
+            if (retries < maxRetries) {
+              retries++;
+              const delay = Math.pow(2, retries) * 1000;
+              toast.info(`OpenAI band, ${delay / 1000} soniyadan keyin qayta urinib ko'riladi...`);
+              await new Promise(r => setTimeout(r, delay));
+              continue;
+            }
+          }
+          break;
+        }
+        aiData = await aiResponse.json()
+        if (!aiResponse.ok) {
+          aiErrorMessage = aiData?.error?.message || "OpenAI so'rovida xatolik"
+          if (aiErrorMessage.toLowerCase().includes("quota") || aiResponse.status === 429) {
+            toast.error("OpenAI limiti tugagan", {
+              description: "Hozircha faqat transcript ko'rsatildi. Modelni o'zgartirib ko'ring (Settings).",
+            })
+            setGeminiReply(fallbackKotibaObject(recognizedText).assistant_reply)
+            chunksRef.current = []
+            return
+          }
+          throw new Error(aiErrorMessage)
+        }
+        const gptText = aiData?.choices?.[0]?.message?.content || ""
+        const kotibaObject = parseKotibaObject(gptText, recognizedText)
+        setGeminiReply(kotibaObject.assistant_reply || "")
+        saveGeneratedData(kotibaObject.tasks || [], kotibaObject.expenses || [])
+
+      } else { // Gemini models
+        if (!geminiApiKey) {
+          toast.error("Gemini API key topilmadi", { description: "Burger menu ichida Gemini API key kiriting." });
+          setGeminiReply(fallbackKotibaObject(recognizedText).assistant_reply);
+          chunksRef.current = [];
+          return;
+        }
+        while (retries <= maxRetries) {
+          aiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${geminiApiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                generationConfig: {
+                  responseMimeType: "application/json",
+                },
+                contents: [
+                  {
+                    parts: [
+                      {
+                        text: `${KOTIBA_PROMPT}\n\nUser name: ${username || "Noma'lum"}\nCurrent time (${selectedTimezone}): ${getFormattedTime()}\nUser speech:\n${recognizedText}`,
+                      },
+                    ],
+                  },
+                ],
+              }),
+            }
+          )
+
+          if (aiResponse.status === 404 && currentModel !== STABLE_GEMINI_FALLBACK) {
+            console.warn(`Model ${currentModel} not found, falling back to ${STABLE_GEMINI_FALLBACK}`);
+            currentModel = STABLE_GEMINI_FALLBACK;
             continue;
           }
+
+          if (aiResponse.status === 429 || aiResponse.status === 503) {
+            if (retries < maxRetries) {
+              retries++;
+              const delay = Math.pow(2, retries) * 1000;
+              toast.info(`Gemini band, ${delay / 1000} soniyadan keyin qayta urinib ko'riladi...`);
+              await new Promise(r => setTimeout(r, delay));
+              continue;
+            }
+          }
+          break;
         }
-        break;
-      }
 
-      const geminiData = await geminiResponse.json()
+        aiData = await aiResponse.json()
 
-      if (!geminiResponse.ok) {
-        const geminiErrorMessage = geminiData?.error?.message || "Gemini so'rovida xatolik"
-        if (geminiErrorMessage.toLowerCase().includes("quota") || geminiResponse.status === 429) {
-          toast.error("Gemini limiti tugagan", {
-            description: "Hozircha faqat transcript ko'rsatildi. Modelni o'zgartirib ko'ring (Settings).",
-          })
-          setGeminiReply(fallbackKotibaObject(recognizedText).assistant_reply)
-          chunksRef.current = []
-          return
+        if (!aiResponse.ok) {
+          aiErrorMessage = aiData?.error?.message || "Gemini so'rovida xatolik"
+          if (aiErrorMessage.toLowerCase().includes("quota") || aiResponse.status === 429) {
+            toast.error("Gemini limiti tugagan", {
+              description: "Hozircha faqat transcript ko'rsatildi. Modelni o'zgartirib ko'ring (Settings).",
+            })
+            setGeminiReply(fallbackKotibaObject(recognizedText).assistant_reply)
+            chunksRef.current = []
+            return
+          }
+          throw new Error(aiErrorMessage)
         }
-        throw new Error(geminiErrorMessage)
+
+        const geminiText =
+          aiData?.candidates?.[0]?.content?.parts?.map((part) => part.text).join("") || ""
+
+        const kotibaObject = parseKotibaObject(geminiText, recognizedText)
+        setGeminiReply(kotibaObject.assistant_reply || "")
+        saveGeneratedData(kotibaObject.tasks || [], kotibaObject.expenses || [])
       }
-
-      const geminiText =
-        geminiData?.candidates?.[0]?.content?.parts?.map((part) => part.text).join("") || ""
-
-      const kotibaObject = parseKotibaObject(geminiText, recognizedText)
-      setGeminiReply(kotibaObject.assistant_reply || "")
-      saveGeneratedData(kotibaObject.tasks || [], kotibaObject.expenses || [])
       
       // Final data cleanup
       chunksRef.current = []
@@ -927,6 +998,7 @@ function App() {
     }
   }, [
     geminiApiKey,
+    openaiApiKey, // Added openaiApiKey to dependencies
     parseKotibaObject,
     resetRecorder,
     saveGeneratedData,
@@ -934,6 +1006,7 @@ function App() {
     username,
     selectedGeminiModel,
     selectedTimezone,
+    getFormattedTime, // Added getFormattedTime to dependencies
   ])
 
   const togglePause = React.useCallback(() => {
@@ -1048,7 +1121,7 @@ function App() {
     startVisualizer(recordAnalyserRef.current)
     setIsRecording(true)
     setIsPaused(false)
-  }, [rebuildAudioUrl, resetRecorder, startVisualizer])
+  }, [rebuildAudioUrl, resetRecorder, startVisualizer, sendRecording, stopVisualizer, stopStream])
 
   const stopRecording = React.useCallback((autoSend = false) => {
     shouldAutoSendRef.current = autoSend
@@ -1108,10 +1181,12 @@ function App() {
     const cleanName = draftUsername.trim()
     const cleanSttKey = sttApiKeyInput.trim()
     const cleanGeminiKey = geminiApiKeyInput.trim()
+    const cleanOpenaiKey = openaiApiKeyInput.trim()
 
     localStorage.setItem("username", cleanName)
     localStorage.setItem("uzbekvoice_api_key", cleanSttKey)
     localStorage.setItem("gemini_api_key", cleanGeminiKey)
+    localStorage.setItem("openai_api_key", cleanOpenaiKey)
     localStorage.setItem("kotiba_timezone", selectedTimezone)
     localStorage.setItem("kotiba_custom_gmt_offset", customGmtOffset)
     localStorage.setItem("kotiba_gemini_model", selectedGeminiModel)
@@ -1119,8 +1194,9 @@ function App() {
     setUsername(cleanName)
     setSttApiKeyInput(cleanSttKey)
     setGeminiApiKeyInput(cleanGeminiKey)
+    setOpenaiApiKeyInput(cleanOpenaiKey)
     toast.success("Sozlamalar saqlandi")
-  }, [draftUsername, geminiApiKeyInput, sttApiKeyInput, selectedTimezone, customGmtOffset, selectedGeminiModel])
+  }, [draftUsername, geminiApiKeyInput, sttApiKeyInput, openaiApiKeyInput, selectedTimezone, customGmtOffset, selectedGeminiModel])
 
   const markTaskDone = React.useCallback(
     (taskId) => {
@@ -1616,18 +1692,32 @@ function App() {
                           
                           <div className="space-y-2 pt-2">
                             <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">
-                              Model <span className="normal-case text-xs opacity-70 ml-1">(Gemini versiyasi)</span>
+                              OpenAI API key <span className="normal-case text-xs opacity-70 ml-1">(GPT)</span>
+                            </label>
+                            <input
+                              type="password"
+                              className="!duration-0 w-full text-sm rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50"
+                              value={openaiApiKeyInput}
+                              onChange={(event) => setOpenaiApiKeyInput(event.target.value)}
+                              placeholder="sk-..."
+                            />
+                          </div>
+                          
+                          <div className="space-y-2 pt-2">
+                            <label className="text-[13px] font-medium pl-1 text-muted-foreground uppercase tracking-wider">
+                              Model <span className="normal-case text-xs opacity-70 ml-1">(AI versiyasi)</span>
                             </label>
                             <select
                               className="!duration-0 w-full text-sm rounded-[20px] border border-border/60 bg-background/80 px-4 py-3.5 outline-none transition-all focus:border-foreground/30 focus:bg-background focus:ring-4 focus:ring-muted/50 appearance-none"
                               value={selectedGeminiModel}
                               onChange={(e) => setSelectedGeminiModel(e.target.value)}
                             >
-                              <option value="gemini-1.5-flash-latest">💡 Gemini 1.5 Flash (Eng yuqori limit)</option>
-                              <option value="gemini-1.5-flash-8b-latest">⚡ Gemini 1.5 Flash-8B (Juda tez)</option>
+                              <option value="gpt-4o-mini">🤖 GPT-4o Mini (Tez va arzon)</option>
+                              <option value="gpt-4o">🧠 GPT-4o (Eng aqlli)</option>
                               <option value="gemini-2.0-flash">🚀 Gemini 2.0 Flash (Barqaror)</option>
+                              <option value="gemini-1.5-flash-latest">💡 Gemini 1.5 Flash (Tez)</option>
                               <option value="gemini-1.5-pro-latest">🧠 Gemini 1.5 Pro (Aql markazi)</option>
-                              
+                              <option value="gemini-3-flash-preview">✨ Gemini 3 Flash (Experimental)</option>
                             </select>
                           </div>
                         </div>
