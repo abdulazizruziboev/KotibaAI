@@ -29,7 +29,7 @@ export function TaskEditModal({
 
   return (
     <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
-      <DialogContent className="sm:max-w-md rounded-[32px] border-border/40 backdrop-blur-xl">
+      <DialogContent className="sm:max-w-[425px] mx-2 rounded-[32px] border-border/40 backdrop-blur-xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">Vazifani tahrirlash</DialogTitle>
         </DialogHeader>

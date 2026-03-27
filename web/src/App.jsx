@@ -43,57 +43,39 @@ const STABLE_GEMINI_FALLBACK = "gemini-1.5-flash-latest"
 
 const KOTIBA_PROMPT = `You are KotibaAI — an Uzbek executive assistant AND a 20+ year professional Uzbek language editor and proofreader.
 
-Your dual role:
-1. Extract tasks and expenses from the user's speech (as usual).
-2. Before processing, silently correct the user's text: fix dialect variations (Toshkent, Samarqand, Farg'ona, Xorazm shevasi, etc.), spelling errors (imlo), punctuation, and grammar. Normalize to standard literary Uzbek (adabiy til). Do NOT mention corrections in assistant_reply unless the user explicitly asks.
+Your mission: Identify the user's intent with SUPER precision, even in complex mixed commands. 
 
-Correction rules:
-- Dialect words → standard Uzbek (e.g. "kerak" not "keragik", "nima" not "nim", "bor" not "ba'r")
-- Fix imlo (spelling) errors silently
-- Correct apostrophe usage: o', g', etc.
-- Normalize loanwords to Uzbek orthography
-- Fix vowel harmony where needed
-
-Always return valid JSON only. No markdown. No code fences.
+Core capabilities:
+1. Extract tasks and expenses.
+2. Silently correct Uzbek text (dialects, spelling, grammar). 
+3. Perform system actions: theme switching, navigation, and setting limits.
 
 Schema:
 {
-  "intent": "chat | reminder | task | expense | mixed",
-  "assistant_reply": "short helpful reply in correct, standard literary Uzbek",
-  "tasks": [
-    {
-      "title": "short task title in standard Uzbek",
-      "note": "optional extra context",
-      "action_text": "what should be done when reminder fires",
-      "schedule_at": "ISO datetime or null",
-      "remind_before_minutes": 0,
-      "repeat": {
-        "type": "none | hourly | daily | weekly | custom",
-        "interval_minutes": null
-      },
-      "auto_delete_at": "ISO datetime or null",
-      "notify_in_site": true,
-      "notify_voice": true
-    }
-  ],
-  "expenses": [
-    {
-      "title": "short description of expense in standard Uzbek",
-      "amount": 0,
-      "currency": "UZS | USD",
-      "category": "category of expense",
-      "date": "ISO datetime or null"
-    }
-  ]
+  "intent": "chat | reminder | task | expense | mixed | theme_change | limit_set | tab_navigate",
+  "assistant_reply": "short helpful reply in standard literary Uzbek",
+  "theme": "dark | light | null",
+  "target_tab": "home | tasks | expenses | settings | null",
+  "limit": {
+    "amount": 0,
+    "currency": "UZS | USD"
+  },
+  "tasks": [ ... (as before) ... ],
+  "expenses": [ ... (as before) ... ]
 }
 
-Rules:
-- If the user only chats, tasks and expenses can be [].
-- If the user mentions spending money, buying something, or costs, extract it into expenses. Extract amount as Number.
-- If the user asks for a reminder, create a task.
-- If time is mentioned for tasks, set schedule_at. If date mentioned for expenses, set date.
-- assistant_reply must clearly explain what was understood (expenses and tasks added).
-- Always write assistant_reply in correct, standard literary Uzbek.`
+- Identify intent precisely! If multiple actions are requested, use "mixed".
+- Navigation:
+  - "Asosiy", "Uy", "Bosh sahifa" → "home"
+  - "Tasklar", "Vazifalar", "Ro'yxat" → "tasks"
+  - "Xarajatlar", "Pullar" → "expenses"
+  - "Sozlamalar" → "settings" 
+- Theme Change: ONLY set "theme" if user EXPLICITLY asks to change "rejim" or "mavzu" (e.g., "qorong'i rejimni yoq", "tungi qilsin").
+  - DO NOT change theme for navigation commands like "sozlamalarga o't".
+  - Theme targets: "Qorong'i/Tungi" → "dark", "Kundizgi/Yorug'" → "light".
+- Personalization: If "User name" is not "Noma'lum", use it to address the user in "assistant_reply".
+- Always confirm ALL actions in "assistant_reply".
+- Always return valid JSON only.`
 
 const createEmptyLevels = () => Array.from({ length: barCount }, () => 10)
 
@@ -339,7 +321,8 @@ const extractJsonObject = (text) => {
   }
 }
 
-function App() {
+function AppContent() {
+  const navigate = useNavigate()
   const [tasks, setTasks] = React.useState(() =>
     safeJsonParse(localStorage.getItem(TASKS_STORAGE_KEY), [])
   )
@@ -741,6 +724,50 @@ function App() {
     return parsed || fallbackKotibaObject(recognizedText)
   }, [])
 
+  const handleAiCommands = React.useCallback((kotibaObject) => {
+    if (!kotibaObject) return
+
+    // Multiple actions can happen in "mixed" mode too
+    const handleSingle = (obj) => {
+      // Theme - only if explicitly provided as a string
+      if (typeof obj.theme === "string" && (obj.theme === "dark" || obj.theme === "light")) {
+        const isNewLight = obj.theme === "light"
+        setIsLight(isNewLight)
+        localStorage.setItem("theme", obj.theme)
+        toast.success(isNewLight ? "Kundizgi rejim yoqildi" : "Tungi rejim yoqildi")
+      }
+
+      // Limit
+      if (obj.limit && obj.limit.amount) {
+        let amount = Number(obj.limit.amount) || 0
+        if (obj.limit.currency === "USD") {
+          amount = amount * 12850
+        }
+        setExpenseLimit(amount)
+        localStorage.setItem("kotiba_expense_limit", amount.toString())
+        toast.success("Xarajat limiti yangilandi")
+      }
+
+      // Navigation
+      if (obj.target_tab) {
+        const paths = {
+          home: "/",
+          tasks: "/tasks",
+          expenses: "/expenses",
+          settings: "/settings" // assuming settings is a route or handled by BottomNav
+        }
+        const path = paths[obj.target_tab]
+        if (path) {
+          navigate(path)
+          // Also set the tab state if BottomNav uses it
+          // In this app, navigation is handled via react-router-dom Routes
+        }
+      }
+    }
+
+    handleSingle(kotibaObject)
+  }, [setIsLight, setExpenseLimit, navigate])
+
   const saveGeneratedData = React.useCallback(
     (generatedTasks, generatedExpenses) => {
       if (Array.isArray(generatedTasks) && generatedTasks.length > 0) {
@@ -910,6 +937,7 @@ function App() {
         }
         const gptText = aiData?.choices?.[0]?.message?.content || ""
         const kotibaObject = parseKotibaObject(gptText, recognizedText)
+        handleAiCommands(kotibaObject)
         setGeminiReply(kotibaObject.assistant_reply || "")
         saveGeneratedData(kotibaObject.tasks || [], kotibaObject.expenses || [])
 
@@ -980,6 +1008,7 @@ function App() {
           aiData?.candidates?.[0]?.content?.parts?.map((part) => part.text).join("") || ""
 
         const kotibaObject = parseKotibaObject(geminiText, recognizedText)
+        handleAiCommands(kotibaObject)
         setGeminiReply(kotibaObject.assistant_reply || "")
         saveGeneratedData(kotibaObject.tasks || [], kotibaObject.expenses || [])
       }
@@ -995,18 +1024,20 @@ function App() {
       chunksRef.current = []
     } finally {
       setIsSubmitting(false)
+      resetRecorder() // Auto-reset after any successful or failed path
     }
   }, [
     geminiApiKey,
-    openaiApiKey, // Added openaiApiKey to dependencies
+    openaiApiKey,
     parseKotibaObject,
     resetRecorder,
     saveGeneratedData,
+    handleAiCommands, // Added handleAiCommands to dependencies
     sttApiKey,
     username,
     selectedGeminiModel,
     selectedTimezone,
-    getFormattedTime, // Added getFormattedTime to dependencies
+    getFormattedTime,
   ])
 
   const togglePause = React.useCallback(() => {
@@ -1177,6 +1208,7 @@ function App() {
 
 
 
+
   const saveSettings = React.useCallback(() => {
     const cleanName = draftUsername.trim()
     const cleanSttKey = sttApiKeyInput.trim()
@@ -1197,6 +1229,25 @@ function App() {
     setOpenaiApiKeyInput(cleanOpenaiKey)
     toast.success("Sozlamalar saqlandi")
   }, [draftUsername, geminiApiKeyInput, sttApiKeyInput, openaiApiKeyInput, selectedTimezone, customGmtOffset, selectedGeminiModel])
+
+  const handleForceUpdate = React.useCallback(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (let registration of registrations) {
+          registration.unregister()
+        }
+      })
+    }
+    if ("caches" in window) {
+      caches.keys().then((names) => {
+        for (let name of names) caches.delete(name)
+      })
+    }
+    toast.info("Yangilanishlar yuklanmoqda...", { duration: 2000 })
+    setTimeout(() => {
+      window.location.reload(true)
+    }, 1000)
+  }, [])
 
   const markTaskDone = React.useCallback(
     (taskId) => {
@@ -1444,7 +1495,7 @@ function App() {
 
   const editTaskModal = editingTask && (
     <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md mx-2">
         <DialogHeader>
           <DialogTitle>Vazifani tahrirlash</DialogTitle>
         </DialogHeader>
@@ -1507,7 +1558,7 @@ function App() {
 
   const limitModal = (
     <Dialog open={isLimitModalOpen} onOpenChange={setIsLimitModalOpen}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md mx-2">
         <DialogHeader>
           <DialogTitle>Xarajat limitini belgilash</DialogTitle>
         </DialogHeader>
@@ -1535,7 +1586,7 @@ function App() {
   )
 
   return (
-    <BrowserRouter>
+    <>
       {editTaskModal}
       {limitModal}
       <div className="min-h-screen w-full bg-background text-foreground flex flex-col items-center">
@@ -1727,6 +1778,16 @@ function App() {
                         <Button size="lg" className="w-full rounded-[20px] h-[52px] text-[15px] shadow-sm font-medium transition-all hover:-translate-y-0.5 active:translate-y-0" onClick={saveSettings}>
                           Sozlamalarni saqlash
                         </Button>
+                        <div className="mt-4">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full rounded-[20px] text-xs h-10 border-dashed border-muted-foreground/30 text-muted-foreground hover:text-foreground !duration-0"
+                            onClick={handleForceUpdate}
+                          >
+                            Yangilanishlarni tekshirish (Force Refresh)
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1939,6 +2000,14 @@ function App() {
           </Routes>
         </SwipeableRoutes>
       </div>
+    </>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
     </BrowserRouter>
   )
 }

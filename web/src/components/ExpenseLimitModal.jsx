@@ -39,7 +39,7 @@ export function ExpenseLimitModal({ settings, onSaveSettings, className, variant
           Limit sozlash
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">  
+      <DialogContent className="sm:max-w-[425px] mx-2">  
         <DialogHeader>
           <DialogTitle>Oylik limit</DialogTitle>
           <DialogDescription>Joriy oy harajatlarini nazorat qiling</DialogDescription>

@@ -52,7 +52,7 @@ export function ExpenseAddModal({ onAddExpense, className, variant = "default" }
           Harajat
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md sm:max-w-lg">
+      <DialogContent className="max-w-md sm:max-w-lg mx-2">
         <DialogHeader>
           <DialogTitle>Yangi harajat</DialogTitle>
           <DialogDescription>Harajat ma'lumotlarini kiriting</DialogDescription>
