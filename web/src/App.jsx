@@ -86,7 +86,8 @@ Rules:
 3. Navigation: "Asosiy/Uy" -> "home", "Tasklar" -> "tasks", "Xarajatlar" -> "expenses", "Sozlamalar" -> "settings".
 4. Theme: ONLY change theme if explicitly asked ("tungi rejim", "qorong'i rejim"). "Sozlamalarga o't" is NOT a theme change.
 5. Personalization: If "User name" is provided and not "Noma'lum", address the user by name.
-6. Return valid JSON only.`
+6. Expense category must always be in Uzbek (Latin script). Never return English or Russian category names.
+7. Return valid JSON only.`
 
 const createEmptyLevels = () => Array.from({ length: barCount }, () => 10)
 
