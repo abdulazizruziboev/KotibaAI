@@ -12,8 +12,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
+import { SlidersHorizontalIcon } from "lucide-react"
 
-export function ExpenseLimitModal({ settings, onSaveSettings }) {
+export function ExpenseLimitModal({ settings, onSaveSettings, className, variant = "outline" }) {
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState({
     monthlyLimit: settings.monthlyLimit || "",
@@ -33,9 +34,12 @@ export function ExpenseLimitModal({ settings, onSaveSettings }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full">Limit sozlash</Button>
+        <Button variant={variant} className={className}>
+          <SlidersHorizontalIcon className="mr-2 size-4" />
+          Limit sozlash
+        </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md">  
         <DialogHeader>
           <DialogTitle>Oylik limit</DialogTitle>
           <DialogDescription>Joriy oy harajatlarini nazorat qiling</DialogDescription>

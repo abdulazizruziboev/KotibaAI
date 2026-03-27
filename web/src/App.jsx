@@ -1452,7 +1452,7 @@ function App() {
       {editTaskModal}
       {limitModal}
       <div className="min-h-screen w-full bg-background text-foreground flex flex-col items-center">
-        <div className="sticky top-0 z-99 px-3 py-2 max-w-[768px] w-full border-b border-b-[#0001] flex items-center justify-between rounded-bl-[20px] rounded-br-[20px] bg-background/90 backdrop-blur-sm dark:border-[#fff4]">
+        <div className="sticky top-0 z-50 px-3 py-2 max-w-[768px] w-full border-b border-b-[#0001] flex items-center justify-between rounded-bl-[20px] rounded-br-[20px] bg-background/90 backdrop-blur-sm dark:border-[#fff4]">
           <div className="text-base font-medium tracking-[0.01em]">
             Kotiba<b className="font-semibold">AI</b>
           </div>
@@ -1805,9 +1805,10 @@ function App() {
                     <div className="mt-2 mb-4 text-sm text-muted-foreground">
                       Umumiy xarajatlar tahlili va nazorati
                     </div>
-                    <div className="flex gap-2 mb-4">
+                    <div className="grid grid-cols-2 gap-3 mb-4 w-full px-1">
                       <ExpenseAddModal
-                        className="rounded-full h-8 px-4 text-[13px] font-medium shadow-xs transition-all !duration-0"
+                        variant="outline"
+                        className="rounded-2xl h-10 text-[13px] font-medium shadow-xs transition-all !duration-0"
                         onAddExpense={(newExp) => {
                           const normalized = normalizeExpense(newExp)
                           persistExpenses([...(expenses || []), normalized])
@@ -1815,6 +1816,8 @@ function App() {
                         }}
                       />
                       <ExpenseLimitModal
+                        variant="outline"
+                        className="rounded-2xl h-10 text-[13px] font-medium shadow-xs transition-all !duration-0"
                         settings={{ monthlyLimit: expenseLimit }}
                         onSaveSettings={(s) => {
                           const val = Number(s.monthlyLimit)

@@ -12,9 +12,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { XIcon } from "lucide-react"
+import { PlusIcon, XIcon } from "lucide-react"
 
-export function ExpenseAddModal({ onAddExpense, className }) {
+export function ExpenseAddModal({ onAddExpense, className, variant = "default" }) {
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState({
     title: "",
@@ -47,7 +47,10 @@ export function ExpenseAddModal({ onAddExpense, className }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className={className}>Harajat qo'shish</Button>
+        <Button variant={variant} className={className}>
+          <PlusIcon className="mr-2 size-4" />
+          Harajat
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md sm:max-w-lg">
         <DialogHeader>
